@@ -17,6 +17,7 @@ from engine import (
 from health import check_all_agents
 from routing import assign_agent, ROUTING_TABLE
 from executor import execute_task, get_run, get_run_logs, list_runs
+from approvals import approve_run, reject_run, complete_task, get_approvals
 
 load_dotenv()
 
@@ -170,6 +171,86 @@ async def api_get_run(run_id: str):
 async def api_run_logs(run_id: str):
     logs = await get_run_logs(run_id)
     return {"run_id": run_id, "logs": logs}
+
+
+# ── Approval endpoints ────────────────────────────────────────────────────────
+
+class ApproveRequest(BaseModel):
+    actor: str
+    note: Optional[str] = None
+
+
+class RejectRequest(BaseModel):
+    actor: str
+    reason: str
+
+
+class CompleteRequest(BaseModel):
+    actor: str
+
+
+@app.post("/runs/{run_id}/approve", dependencies=[Depends(verify_token)])
+async def api_approve_run(run_id: str, req: ApproveRequest):
+    """
+    Approve a run in waiting_approval state.
+    Records actor and timestamp.
+    Transitions task: waiting_approval -> approved.
+    Does not apply output to files.
+    Does not complete the task -- call POST /tasks/{id}/complete for that.
+    """
+    try:
+        result = await approve_run(run_id, req.actor, req.note)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/runs/{run_id}/reject", dependencies=[Depends(verify_token)])
+async def api_reject_run(run_id: str, req: RejectRequest):
+    """
+    Reject a run in waiting_approval state.
+    Reason is required.
+    Records actor, reason, and timestamp.
+    Transitions task: waiting_approval -> failed.
+    To retry: create a new task.
+    """
+    try:
+        result = await reject_run(run_id, req.actor, req.reason)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/tasks/{task_id}/complete", dependencies=[Depends(verify_token)])
+async def api_complete_task(task_id: str, req: CompleteRequest):
+    """
+    Mark an approved task as completed.
+    Explicit human action only. Never automatic.
+    Task must be in approved state.
+    """
+    try:
+        result = await complete_task(task_id, req.actor)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/approvals", dependencies=[Depends(verify_token)])
+async def api_list_approvals():
+    records = await get_approvals()
+    return {"approvals": records, "count": len(records)}
+
+
+@app.get("/tasks/{task_id}/approvals", dependencies=[Depends(verify_token)])
+async def api_task_approvals(task_id: str):
+    records = await get_approvals(task_id=task_id)
+    return {"task_id": task_id, "approvals": records}
+
+
+@app.get("/runs/{run_id}/approvals", dependencies=[Depends(verify_token)])
+async def api_run_approvals(run_id: str):
+    records = await get_approvals(run_id=run_id)
+    return {"run_id": run_id, "approvals": records}
 
 
 # ── Agent endpoints ───────────────────────────────────────────────────────────

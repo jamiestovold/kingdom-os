@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS agent_registry (
 VALID_TRANSITIONS = {
     "queued": ["running"],
     "running": ["waiting_approval", "failed"],
-    "waiting_approval": ["approved", "running"],
+    "waiting_approval": ["approved", "running", "failed"],
     "approved": ["completed"],
     "failed": [],
     "completed": [],
