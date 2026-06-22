@@ -18,6 +18,7 @@ from health import check_all_agents
 from routing import assign_agent, ROUTING_TABLE
 from executor import execute_task, get_run, get_run_logs, list_runs
 from approvals import approve_run, reject_run, complete_task, get_approvals
+from daemon import get_daemon_state, update_daemon_state, POLL_INTERVAL_SECONDS, RUNNING_TIMEOUT_SECONDS, MAX_TASKS_PER_HOUR
 
 load_dotenv()
 
@@ -251,6 +252,52 @@ async def api_task_approvals(task_id: str):
 async def api_run_approvals(run_id: str):
     records = await get_approvals(run_id=run_id)
     return {"run_id": run_id, "approvals": records}
+
+
+# ── Daemon endpoints ──────────────────────────────────────────────────────────
+
+@app.get("/daemon/status")
+async def api_daemon_status():
+    """
+    Returns current daemon state.
+    Public endpoint -- no token required.
+    """
+    state = await get_daemon_state()
+    return {
+        "daemon": {
+            "paused": bool(state.get("paused", 0)),
+            "last_poll": state.get("last_poll"),
+            "tasks_run_this_hour": state.get("tasks_run_this_hour", 0),
+            "hour_window_start": state.get("hour_window_start"),
+            "started_at": state.get("started_at"),
+            "updated_at": state.get("updated_at"),
+        },
+        "config": {
+            "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+            "running_timeout_seconds": RUNNING_TIMEOUT_SECONDS,
+            "max_tasks_per_hour": MAX_TASKS_PER_HOUR,
+            "worker_count": 1,
+        }
+    }
+
+
+@app.post("/daemon/pause", dependencies=[Depends(verify_token)])
+async def api_daemon_pause():
+    """
+    Pause the daemon. Continues running but skips task processing.
+    Does not stop the systemd service.
+    """
+    await update_daemon_state(paused=1)
+    await audit("daemon_paused", "daemon", "paused via API")
+    return {"status": "paused", "message": "Daemon will skip processing on next poll"}
+
+
+@app.post("/daemon/resume", dependencies=[Depends(verify_token)])
+async def api_daemon_resume():
+    """Resume the daemon after pausing."""
+    await update_daemon_state(paused=0)
+    await audit("daemon_resumed", "daemon", "resumed via API")
+    return {"status": "running", "message": "Daemon will resume processing on next poll"}
 
 
 # ── Agent endpoints ───────────────────────────────────────────────────────────

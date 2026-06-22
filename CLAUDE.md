@@ -25,19 +25,30 @@ The task engine is the centre of the system. Everything flows through tasks.
 ## Task Lifecycle
 queued -> running -> waiting_approval -> approved -> completed
 waiting_approval -> failed (rejection)
-running -> failed (error or timeout)
+running -> failed (error, timeout, or daemon timeout)
 
-## Approval Rules -- Phase 4
+## Approval Rules
 - approve: waiting_approval -> approved. Actor and timestamp required.
 - complete: approved -> completed. Explicit human action only. Never automatic.
 - reject: waiting_approval -> failed. Reason required.
 - Retry: create a new task. Do not reset task state.
-- Output is never applied to files by any approval action.
-- Every decision is in the audit log.
-- Rejection without reason is not permitted.
+
+## Daemon Rules -- Phase 5
+- Single worker only. worker_count = 1.
+- Poll interval: 10 seconds.
+- Stuck task timeout: 900 seconds (15 minutes).
+- Max tasks per hour: 12.
+- No auto-approval. No auto-completion.
+- No parallel execution.
+- No automatic Claude or Codex API calls.
+- No retries.
+- execute_task() handles queued->running transition. Daemon does not.
+- Recovery uses timeout logic on restart, not blanket failure.
+- Daemon events written to audit_log with daemon_ prefix for significant events only.
+- No audit log spam while paused.
+- API controls paused flag only. systemd controls process lifecycle.
 
 ## Rules
-- Do not add a daemon yet -- Phase 5.
 - Do not add RAG yet -- Phase 6.
 - Do not build the GUI yet -- Phase 7.
 - Do not replace existing schema -- only add to it.
@@ -48,12 +59,12 @@ running -> failed (error or timeout)
 - Never commit or push before final verification passes.
 
 ## Current Phase
-Phase 4 -- Approval Layer.
+Phase 5 -- Controlled Queue Daemon.
 
-## Phase 4 Success Condition
-POST /runs/{id}/approve -> logs approval -> task moves to approved.
-POST /tasks/{id}/complete -> logs completion -> task moves to completed.
-POST /runs/{id}/reject -> logs rejection with reason -> task moves to failed.
-All decisions recorded in approvals table with actor and timestamp.
-Rejection without reason is blocked.
-No output applied to files.
+## Phase 5 Success Condition
+Daemon picks up queued tasks automatically.
+Tasks processed one at a time via execute_task().
+Tasks stop at waiting_approval -- no auto-approval.
+Pause/resume works via API.
+Daemon events visible in audit_log.
+No task auto-completed by daemon.
