@@ -14,6 +14,8 @@ from engine import (
     list_tasks, get_task_events, get_audit_log,
     list_checkpoints, audit
 )
+from health import check_all_agents
+from routing import assign_agent, ROUTING_TABLE
 
 load_dotenv()
 
@@ -71,6 +73,7 @@ class CreateTaskRequest(BaseModel):
     title: str
     description: Optional[str] = None
     owner: Optional[str] = None
+    task_type: Optional[str] = "general"
 
 
 class TransitionRequest(BaseModel):
@@ -80,7 +83,7 @@ class TransitionRequest(BaseModel):
 
 @app.post("/tasks", dependencies=[Depends(verify_token)])
 async def api_create_task(req: CreateTaskRequest):
-    task = await create_task(req.title, req.description, req.owner)
+    task = await create_task(req.title, req.description, req.owner, req.task_type)
     return task
 
 
@@ -112,6 +115,28 @@ async def api_transition_task(task_id: str, req: TransitionRequest):
 async def api_task_events(task_id: str):
     events = await get_task_events(task_id)
     return {"task_id": task_id, "events": events}
+
+
+# ── Agent endpoints ───────────────────────────────────────────────────────────
+
+@app.get("/agents")
+async def api_agents():
+    """
+    Returns availability and health status of all agents.
+    Public endpoint — no token required for health visibility.
+    """
+    agents = await check_all_agents()
+    return {
+        "agents": agents,
+        "routing_table": ROUTING_TABLE,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.get("/agents/routing")
+async def api_routing_table():
+    """Returns the task_type to agent routing table."""
+    return {"routing": ROUTING_TABLE}
 
 
 # ── Audit log ─────────────────────────────────────────────────────────────────

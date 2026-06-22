@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     title TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'queued',
+    task_type TEXT NOT NULL DEFAULT 'general',
+    agent TEXT NOT NULL DEFAULT 'claude',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     current_owner TEXT
@@ -31,6 +33,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
     resource TEXT NOT NULL,
     details TEXT
 );
+
+CREATE TABLE IF NOT EXISTS agent_registry (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    description TEXT,
+    available INTEGER NOT NULL DEFAULT 1,
+    last_health_check TEXT,
+    health_status TEXT DEFAULT 'unknown'
+);
 """
 
 VALID_TRANSITIONS = {
@@ -41,6 +53,20 @@ VALID_TRANSITIONS = {
     "failed": [],
     "completed": [],
 }
+
+VALID_AGENTS = ["claude", "codex", "local_llm", "script"]
+
+VALID_TASK_TYPES = [
+    "general",
+    "architecture",
+    "review",
+    "research",
+    "analysis",
+    "build",
+    "test",
+    "document",
+    "infra",
+]
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:

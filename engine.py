@@ -2,6 +2,7 @@ import aiosqlite
 import uuid
 from datetime import datetime, timezone
 from db import DB_PATH, VALID_TRANSITIONS
+from routing import assign_agent
 import subprocess
 import os
 
@@ -32,14 +33,21 @@ def checkpoint(task_id: str, event: str):
         pass  # Checkpoint failure is logged but never blocks execution
 
 
-async def create_task(title: str, description: str = None, owner: str = None) -> dict:
+async def create_task(
+    title: str,
+    description: str = None,
+    owner: str = None,
+    task_type: str = "general"
+) -> dict:
     task_id = str(uuid.uuid4())
     ts = now()
+    agent = assign_agent(task_type)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            """INSERT INTO tasks (id, title, description, status, created_at, updated_at, current_owner)
-               VALUES (?, ?, ?, 'queued', ?, ?, ?)""",
-            (task_id, title, description, ts, ts, owner)
+            """INSERT INTO tasks
+               (id, title, description, status, task_type, agent, created_at, updated_at, current_owner)
+               VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?)""",
+            (task_id, title, description, task_type, agent, ts, ts, owner)
         )
         await db.execute(
             """INSERT INTO task_events (task_id, from_status, to_status, timestamp, actor)
@@ -48,9 +56,9 @@ async def create_task(title: str, description: str = None, owner: str = None) ->
         )
         await db.commit()
 
-    await audit("create_task", f"task/{task_id}", f"title={title}")
+    await audit("create_task", f"task/{task_id}", f"title={title} type={task_type} agent={agent}")
     checkpoint(task_id, "created")
-    return {"id": task_id, "title": title, "status": "queued"}
+    return {"id": task_id, "title": title, "status": "queued", "task_type": task_type, "agent": agent}
 
 
 async def transition_task(task_id: str, to_status: str, actor: str = "system") -> dict:
