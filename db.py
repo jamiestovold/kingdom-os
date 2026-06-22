@@ -75,3 +75,11 @@ async def init_db():
 
 async def get_db():
     return aiosqlite.connect(DB_PATH)
+
+# Whitelisted scripts — only these can be executed by the script agent
+SCRIPT_WHITELIST = [
+    "scripts/kingdom-doctor.sh",
+    "scripts/watchdog.sh",
+    "scripts/backup.sh",
+    "scripts/checkpoint.sh",
+]

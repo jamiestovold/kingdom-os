@@ -16,6 +16,7 @@ from engine import (
 )
 from health import check_all_agents
 from routing import assign_agent, ROUTING_TABLE
+from executor import execute_task, get_run, get_run_logs, list_runs
 
 load_dotenv()
 
@@ -115,6 +116,60 @@ async def api_transition_task(task_id: str, req: TransitionRequest):
 async def api_task_events(task_id: str):
     events = await get_task_events(task_id)
     return {"task_id": task_id, "events": events}
+
+
+# ── Run endpoints ─────────────────────────────────────────────────────────────
+
+@app.post("/tasks/{task_id}/run", dependencies=[Depends(verify_token)])
+async def api_run_task(task_id: str):
+    """
+    Manually trigger execution of a queued task.
+    Nothing executes automatically — this endpoint must be called explicitly.
+    All runs default to requires_approval = True.
+    Output is captured and logged. Never applied automatically.
+    Task moves to waiting_approval on success, failed on error.
+    """
+    try:
+        task = await get_task(task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if task["status"] != "queued":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task must be in 'queued' status to run. Current status: {task['status']}"
+        )
+
+    await audit("trigger_run", f"task/{task_id}", f"agent={task['agent']}")
+    result = await execute_task(task)
+    return result
+
+
+@app.get("/tasks/{task_id}/runs", dependencies=[Depends(verify_token)])
+async def api_task_runs(task_id: str):
+    runs = await list_runs(task_id)
+    return {"task_id": task_id, "runs": runs}
+
+
+@app.get("/runs", dependencies=[Depends(verify_token)])
+async def api_list_runs():
+    runs = await list_runs()
+    return {"runs": runs, "count": len(runs)}
+
+
+@app.get("/runs/{run_id}", dependencies=[Depends(verify_token)])
+async def api_get_run(run_id: str):
+    try:
+        run = await get_run(run_id)
+        return run
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/runs/{run_id}/logs", dependencies=[Depends(verify_token)])
+async def api_run_logs(run_id: str):
+    logs = await get_run_logs(run_id)
+    return {"run_id": run_id, "logs": logs}
 
 
 # ── Agent endpoints ───────────────────────────────────────────────────────────
