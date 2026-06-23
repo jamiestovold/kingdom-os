@@ -78,3 +78,15 @@ No task auto-completed by daemon.
 - Chroma data directory excluded from git.
 - Rebuild endpoint intentionally omitted in Phase 6. Rebuild requires locking and will be added later.
 - No daemon auto-indexing yet -- Phase 7 or later.
+
+## Backup Rules -- Phase 6.5
+- Hourly: WAL-safe SQLite backup via sqlite3 .backup command.
+- Daily: Full encrypted archive -- runs once per day via marker file.
+- Weekly: Full encrypted snapshot -- Sundays only.
+- Local backups: unencrypted, fast access.
+- B2 uploads: encrypted with AES-256 before leaving VPS.
+- BACKUP_PASSPHRASE is in .env and in password manager -- never log or expose it.
+- Recovery target: under 30 minutes on a fresh VPS.
+- Run backup: bash scripts/backup.sh
+- Run restore: bash scripts/restore.sh <date> <passphrase>
+- backups/, *.enc, rclone.conf are in .gitignore -- never commit them.

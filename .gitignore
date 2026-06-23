@@ -7,3 +7,8 @@ __pycache__/
 kingdom.db-wal
 kingdom.db-shm
 chroma_data/
+backups/
+*.enc
+*.tar.gz.enc
+rclone.conf
+.config/rclone/
