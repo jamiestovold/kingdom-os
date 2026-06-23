@@ -6,3 +6,4 @@ __pycache__/
 *.sqlite
 kingdom.db-wal
 kingdom.db-shm
+chroma_data/

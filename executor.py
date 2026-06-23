@@ -141,12 +141,26 @@ async def execute_script(task: dict, run_id: str) -> str:
 
 async def execute_claude_handoff(task: dict, run_id: str) -> str:
     """
-    Claude/Codex manual handoff.
+    Claude/Codex manual handoff with RAG context attached.
     Does not call Claude or Codex API automatically.
-    Returns a structured prompt package for the human to run manually.
+    Attaches relevant knowledge context to the handoff package.
+    Context is read-only -- never applied automatically.
     """
     agent = task.get("agent", "claude")
     await log_run(run_id, f"Preparing {agent} handoff package...")
+
+    # Retrieve relevant context from knowledge base
+    query = f"{task['title']} {task.get('description', '')}"
+    try:
+        from knowledge import build_context
+        rag_context = build_context(query)
+        if rag_context:
+            await log_run(run_id, f"RAG context retrieved ({len(rag_context)} chars)")
+        else:
+            await log_run(run_id, "No relevant knowledge found for this task")
+    except Exception as e:
+        rag_context = f"\n## RAG Context\n_RAG context unavailable: {e}_\n"
+        await log_run(run_id, f"RAG context unavailable: {e}", "warn")
 
     handoff = f"""# {agent.upper()} HANDOFF PACKAGE
 Generated: {now()}
@@ -158,7 +172,12 @@ Task Type: {task['task_type']}
 
 ## Description
 {task.get('description', 'No description provided')}
+"""
 
+    if rag_context:
+        handoff += f"{rag_context}"
+
+    handoff += f"""
 ## Instructions
 This task requires {agent} to handle it.
 Copy the prompt below and run it manually in your {agent} session.
@@ -180,7 +199,7 @@ POST /tasks/{task['id']}/transition
 This run is waiting for your manual review and approval.
 Task will remain in waiting_approval until you act on it."""
 
-    await log_run(run_id, f"Handoff package prepared for {agent}")
+    await log_run(run_id, f"Handoff package prepared for {agent} ({len(handoff)} chars total)")
     return handoff
 
 

@@ -19,6 +19,7 @@ from routing import assign_agent, ROUTING_TABLE
 from executor import execute_task, get_run, get_run_logs, list_runs
 from approvals import approve_run, reject_run, complete_task, get_approvals
 from daemon import get_daemon_state, update_daemon_state, POLL_INTERVAL_SECONDS, RUNNING_TIMEOUT_SECONDS, MAX_TASKS_PER_HOUR
+from knowledge import ingest_file, ingest_directory, search, build_context, get_knowledge_status
 
 load_dotenv()
 
@@ -320,6 +321,65 @@ async def api_agents():
 async def api_routing_table():
     """Returns the task_type to agent routing table."""
     return {"routing": ROUTING_TABLE}
+
+
+# ── Knowledge endpoints ───────────────────────────────────────────────────────
+
+class IngestFileRequest(BaseModel):
+    file_path: str
+
+class IngestDirectoryRequest(BaseModel):
+    dir_path: str
+    extensions: Optional[list] = None
+
+class SearchRequest(BaseModel):
+    query: str
+    n_results: Optional[int] = 5
+
+@app.get("/knowledge/status")
+async def api_knowledge_status():
+    """Current state of the knowledge base. Public endpoint."""
+    status = await get_knowledge_status()
+    return status
+
+@app.post("/knowledge/ingest/file", dependencies=[Depends(verify_token)])
+async def api_ingest_file(req: IngestFileRequest):
+    """
+    Ingest a single file into the knowledge base.
+    Uses file hashing -- unchanged files are skipped.
+    Excluded files are rejected.
+    Never auto-indexes. Always a deliberate action.
+    """
+    try:
+        result = await ingest_file(req.file_path)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/knowledge/ingest/directory", dependencies=[Depends(verify_token)])
+async def api_ingest_directory(req: IngestDirectoryRequest):
+    """
+    Ingest all eligible files in a directory.
+    Never auto-indexes. Always a deliberate action.
+    """
+    try:
+        result = await ingest_directory(req.dir_path, req.extensions)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/knowledge/search", dependencies=[Depends(verify_token)])
+async def api_search(req: SearchRequest):
+    """
+    Search the knowledge base.
+    Read-only. Never changes state.
+    """
+    results = search(req.query, req.n_results or 5)
+    return {"query": req.query, "results": results, "count": len(results)}
+
+# /knowledge/rebuild endpoint intentionally omitted from Phase 6.
+# Rebuild requires an async lock to prevent concurrent search/ingest corruption.
+# Will be added in a later phase with proper concurrency protection.
 
 
 # ── Audit log ─────────────────────────────────────────────────────────────────

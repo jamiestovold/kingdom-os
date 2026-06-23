@@ -68,3 +68,13 @@ Tasks stop at waiting_approval -- no auto-approval.
 Pause/resume works via API.
 Daemon events visible in audit_log.
 No task auto-completed by daemon.
+
+## Knowledge Layer Rules -- Phase 6
+- RAG is read-only context. Never changes task state.
+- Never auto-indexes. Ingestion is always a deliberate action.
+- Excluded from indexing: .git, .venv, __pycache__, *.db, *.db-wal, *.db-shm, .env, *.log, *.pyc
+- Retrieval limit: top 5 chunks max.
+- Max context added to handoff: 5,000 characters hard cap.
+- Chroma data directory excluded from git.
+- Rebuild endpoint intentionally omitted in Phase 6. Rebuild requires locking and will be added later.
+- No daemon auto-indexing yet -- Phase 7 or later.
