@@ -83,16 +83,21 @@ Return only the output, no explanations.
 Do not include file paths or commands to apply the output."""
 
     await log_run(run_id, "Sending prompt to Ollama (qwen2.5-coder:1.5b)...")
-    result = subprocess.run(
-        ["ollama", "run", "qwen2.5-coder:1.5b", prompt, "--nowordwrap"],
-        capture_output=True,
-        text=True,
-        timeout=120
+    proc = await asyncio.create_subprocess_exec(
+        "ollama", "run", "qwen2.5-coder:1.5b", prompt, "--nowordwrap",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Ollama exited with code {result.returncode}: {result.stderr}")
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise subprocess.TimeoutExpired(["ollama"], 120)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Ollama exited with code {proc.returncode}: {stderr.decode()}")
 
-    output = result.stdout.strip()
+    output = stdout.decode().strip()
     await log_run(run_id, f"Local LLM responded ({len(output)} chars)")
     return output
 
@@ -103,12 +108,10 @@ async def execute_script(task: dict, run_id: str) -> str:
     No arbitrary bash. No commands outside whitelist.
     Raises on timeout, error, or non-whitelisted script.
     """
-    description = task.get("description", "")
+    description = task.get("description", "").strip()
     script_to_run = None
-    for whitelisted in SCRIPT_WHITELIST:
-        if whitelisted in description:
-            script_to_run = whitelisted
-            break
+    if description in SCRIPT_WHITELIST:
+        script_to_run = description
 
     if not script_to_run:
         raise ValueError(
@@ -117,17 +120,22 @@ async def execute_script(task: dict, run_id: str) -> str:
         )
 
     await log_run(run_id, f"Running whitelisted script: {script_to_run}")
-    result = subprocess.run(
-        ["bash", f"/home/kingdom-os/{script_to_run}"],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        cwd="/home/kingdom-os"
+    proc = await asyncio.create_subprocess_exec(
+        "bash", f"/home/kingdom-os/{script_to_run}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd="/home/kingdom-os",
     )
-    output = result.stdout + result.stderr
-    await log_run(run_id, f"Script completed (exit code {result.returncode})")
-    if result.returncode != 0:
-        raise RuntimeError(f"Script exited with code {result.returncode}: {result.stderr}")
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise subprocess.TimeoutExpired(["bash", script_to_run], 60)
+    output = stdout.decode() + stderr.decode()
+    await log_run(run_id, f"Script completed (exit code {proc.returncode})")
+    if proc.returncode != 0:
+        raise RuntimeError(f"Script exited with code {proc.returncode}: {stderr.decode()}")
     return output
 
 

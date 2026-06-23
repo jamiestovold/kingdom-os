@@ -70,6 +70,9 @@ VALID_TASK_TYPES = [
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.commit()
         await db.executescript(SCHEMA)
         await db.commit()
 

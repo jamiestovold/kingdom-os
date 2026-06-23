@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 *.db
 *.sqlite
+kingdom.db-wal
+kingdom.db-shm
