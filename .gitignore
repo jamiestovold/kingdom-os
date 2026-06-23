@@ -12,3 +12,6 @@ backups/
 *.tar.gz.enc
 rclone.conf
 .config/rclone/
+gui/node_modules/
+gui/dist/
+gui/.env
